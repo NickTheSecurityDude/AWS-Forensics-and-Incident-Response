@@ -1,6 +1,5 @@
 import json, boto3, time, datetime, logging
 
-
 def lambda_handler(event, context):
     # Set to 1 to revoke current role sessions, this will disrupt other instances using
     # the role until they are restarted or request new temporary credentials.
@@ -28,23 +27,41 @@ def lambda_handler(event, context):
         logger.error("Instance Id Not Found.")
         return 0
 
+    # Check if instance is already quarantined
+    response = ec2_client.describe_tags(
+      Filters=[
+        {
+          'Name': 'resource-id',
+          'Values': [instance_id]
+        },
+        {
+          'Name': 'key',
+          'Values': ['Quarantine']
+        }
+      ]
+    )
+    tags = response['Tags']
+    if tags:
+       quarantine_value = tags[0]['Value']
+       if quarantine_value == 'true':
+         logger.error("ERROR: Quarantine tag true. Instance already quarantined.")
+         return 999
+
     # Get EC2 VPC Id
     vpc_id = ec2_client.describe_instances(InstanceIds=[instance_id])['Reservations'][0]['Instances'][0]['VpcId']
     logger.debug(vpc_id)
 
-    # Get Instance Type (used to find ram size)
-    # instance_type = ec2_client.describe_instances(InstanceIds=[instance_id])['Reservations'][0]['Instances'][0]['InstanceType']
-    # logger.debug(instance_type)
-
     # Get Instance Role
     logger.info("Get Instance Role")
-    instance_profile = \
-    ec2_client.describe_instances(InstanceIds=[instance_id])['Reservations'][0]['Instances'][0]['IamInstanceProfile'][
-        'Arn'].split("/")[1]
+    instance_profile = ec2_client.describe_instances(InstanceIds=[instance_id])['Reservations'][0]['Instances'][0]['IamInstanceProfile']['Arn'].split("/")[1]
     logger.debug(instance_profile)
-    instance_role = \
-    iam_client.get_instance_profile(InstanceProfileName=instance_profile)['InstanceProfile']['Roles'][0]['RoleName']
+    instance_role = iam_client.get_instance_profile(InstanceProfileName=instance_profile)['InstanceProfile']['Roles'][0]['RoleName']
     logger.info(instance_role)
+
+    # Check to make sure Quarantine Role is not already attached to Instance
+    if "QuarantineRole" in instance_role:
+        logger.info("Error: Quarantine Role Already Attached to Instance")
+        return 999
 
     # Get Instance Instance Profile Association Id
     association_id = ec2_client.describe_iam_instance_profile_associations(
@@ -53,14 +70,9 @@ def lambda_handler(event, context):
     logger.debug(association_id)
 
     # Get Parameters
-    quarantine_sg = \
-    ssm_client.get_parameter(Name='/resources/securitygroups/' + vpc_id + '/QuarantineSecurityGroupVPC1/GroupId')[
-        'Parameter']['Value']
-    quarantine_instance_profile = \
-    ssm_client.get_parameter(Name='/resources/iam/instance-profiles/QuarantineRoleInstanceProfile/Arn')['Parameter'][
-        'Value']
-    forensic_scripts_bucket = ssm_client.get_parameter(Name='/resources/s3/ForensicsScriptsBucket/Name')['Parameter'][
-        'Value']
+    quarantine_sg = ssm_client.get_parameter(Name='/resources/securitygroups/' + vpc_id + '/QuarantineSecurityGroupVPC1/GroupId')['Parameter']['Value']
+    quarantine_instance_profile = ssm_client.get_parameter(Name='/resources/iam/instance-profiles/QuarantineRoleInstanceProfile/Arn')['Parameter']['Value']
+    forensic_scripts_bucket = ssm_client.get_parameter(Name='/resources/s3/ForensicsScriptsBucket/Name')['Parameter']['Value']
     forensic_data_bucket = ssm_client.get_parameter(Name='/resources/s3/ForensicsDataBucket/Name')['Parameter']['Value']
 
     # Tag instance
