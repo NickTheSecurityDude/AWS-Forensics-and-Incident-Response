@@ -9,6 +9,8 @@ These resources will respond to a SecurityHub finding by quarantining and affect
    2. Description: Trigger a Lambda Incident Response function to quarantine an instnace and collect forensic data.
    3. Custom action ID: CompromisedEC2
 3. Create an EC2 instance (if needed)
+   If you want a ram dump, make and kernel-headers must be installed:
+   ```yum -y install make kernel-headers```
 4. Create an S3 bucket and upload the file: aws_forensics_lambda.zip to the root folder
 5. Create a CloudFormation stack called forensics-and-incident-response, using the file: aws_forensics.yaml
 6. Upload the file called get-forensic-data.sh to the bucket starting with:    
