@@ -6,7 +6,7 @@ These resources will respond to a SecurityHub finding by quarantining and affect
 1. Enable Inspector and Security Hub
 2. Create a Custom Action in SecurityHub as follows:
    1. Action name: CompromisedEC2
-   2. Description: Trigger a Lambda Incident Response function to quarantine an instnace and collect forensic data.
+   2. Description: Trigger a Lambda Incident Response function to quarantine an instance and collect forensic data.
    3. Custom action ID: CompromisedEC2
 3. Create an EC2 instance (if needed)   
    If you want a ram dump, make and kernel-headers must be installed:   
