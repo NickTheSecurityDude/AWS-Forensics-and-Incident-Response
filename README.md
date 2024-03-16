@@ -11,8 +11,8 @@ These resources will respond to a SecurityHub finding by quarantining and affect
 3. Create an EC2 instance (if needed)
 4. Create an S3 bucket and upload the file: aws_forensics_lambda.zip to the root folder
 5. Create a CloudFormation stack called forensics-and-incident-response, using the file: aws_forensics.yaml
-6. Upload the file called get-forensic-data.sh to the bucket starting with: forensics-and-incident-resp-forensicsscriptsbucket-random-string
-   Note: there are 2 similarly named buckets, be sure to upload to the one with "scripts" in the name
+6. Upload the file called get-forensic-data.sh to the bucket starting with: forensics-and-incident-resp-forensicsscriptsbucket-random-string   
+   **Note: there are 2 similarly named buckets, be sure to upload to the one with "scripts" in the name**
 7. In SecurityHub, look for a finding for an EC2 instance, click it, and select Actions-->CompromisedEC2
     Note: you will need to wait for some findings to appear, or upload a file which will trigger an inspector rule
 8. Wait a few minutes for the lambda script to run, then verify the following:
