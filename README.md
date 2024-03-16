@@ -14,8 +14,8 @@ These resources will respond to a SecurityHub finding by quarantining and affect
 6. Upload the file called get-forensic-data.sh to the bucket starting with:    
    forensics-and-incident-resp-forensicsscriptsbucket-\<random-string\>   
    **Note: there are 2 similarly named buckets, be sure to upload to the one with "scripts" in the name**
-7. In SecurityHub, look for a finding for an EC2 instance, click it, and select Actions-->CompromisedEC2
-    Note: you will need to wait for some findings to appear, or upload a file which will trigger an inspector rule
+7. In SecurityHub, look for a finding for an EC2 instance, click it, and select Actions-->CompromisedEC2    
+    **Note: you will need to wait for some findings to appear, or upload a file which will trigger an inspector rule**
 8. Wait a few minutes for the lambda script to run, then verify the following:
     1. The security group what changes
     2. The role was changed
