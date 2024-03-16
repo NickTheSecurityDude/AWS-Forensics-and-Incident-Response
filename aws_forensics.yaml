@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Incident Response Demo - CloudFormation Stack
+  For learning purposes only.
+
+Parameters:
+
+  VPCId1:
+    Type: AWS::EC2::VPC::Id
+
+  # Add additional VPCs here
+
+  # This is not in CloudFormation, create manually in the console
+  #SecurityHubAction:
+  # Type: AWS::SecurityHub::CustomActionTarget
+  #  Properties:
+  #    ActionName: "CompromisedEC2"
+  #    Description: "Quarantine instance and collect forensic for a compromised instance."
+
+  LambdaBucketName:
+    Type: String
+    Description: Enter the name of the S3 bucket where you uploaded the lambda zip file
+
+  SecurityHubCustomActionCreated:
+    Type: String
+    Description: I have manually created the SecurityHub Custom Action
+    AllowedValues:
+      - 'yes'
+      - 'no'
+    Default: 'no'
+
+Conditions:
+
+  ActionCreated: !Equals
+    - 'yes'
+    - !Ref SecurityHubCustomActionCreated
+
+Resources:
+
+  ForensicsScriptsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  ForensicsScriptsBucketArnSSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /resources/s3/ForensicsScriptsBucket/Arn
+      Type: String
+      Value: !GetAtt ForensicsScriptsBucket.Arn
+
+  ForensicsScriptsBucketNameSSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /resources/s3/ForensicsScriptsBucket/Name
+      Type: String
+      Value: !Ref ForensicsScriptsBucket
+
+  ForensicsDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      ObjectLockEnabled: True
+      VersioningConfiguration:
+        Status: Enabled
+
+  ForensicsDataBucketArnSSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /resources/s3/ForensicsDataBucket/Arn
+      Type: String
+      Value: !GetAtt ForensicsDataBucket.Arn
+
+  ForensicsDataBucketNameSSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /resources/s3/ForensicsDataBucket/Name
+      Type: String
+      Value: !Ref ForensicsDataBucket
+
+  QuarantineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  QuarantineRoleArnSSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /resources/iam/roles/QuarantineRole/Arn
+      Type: String
+      Value: !GetAtt QuarantineRole.Arn
+
+  QuarantineRoleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref QuarantineRole
+
+  QuarantineRoleInstanceProfileArnSSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /resources/iam/instance-profiles/QuarantineRoleInstanceProfile/Arn
+      Type: String
+      Value: !GetAtt QuarantineRoleInstanceProfile.Arn
+
+  QuarantineRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: 's3:PutObject'
+            Resource: !Sub ${ForensicsDataBucket.Arn}/*
+          - Effect: Allow
+            Action: 's3:GetObject'
+            Resource: !Sub ${ForensicsScriptsBucket.Arn}/get-forensic-data.sh
+          - Effect: Allow
+            Action: 'ssm:GetParameter'
+            Resource:
+              - !Sub arn:aws:ssm:*:${AWS::AccountId}:parameter/resources/s3/ForensicsScriptsBucket/arn
+              - !Sub arn:aws:ssm:*:${AWS::AccountId}:parameter/resources/s3/ForensicsDataBucket/arn
+      Roles:
+        - !Ref QuarantineRole
+
+  QuarantineSecurityGroupVPC1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow Egress Access to port 443
+      SecurityGroupEgress:
+        # Replace IP with endpoint cidr
+        - CidrIp: 0.0.0.0/0
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: 6
+      VpcId: !Ref VPCId1
+
+  QuarantineSecurityGroupVPC1SSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /resources/securitygroups/${VPCId1}/QuarantineSecurityGroupVPC1/GroupId
+      Type: String
+      Value: !GetAtt QuarantineSecurityGroupVPC1.GroupId
+
+  # Add Additional VPC Security Groups Here
+
+  ForensicsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucketName
+        S3Key: aws_forensics_lambda.zip
+      Handler: index.lambda_handler
+      Role: !GetAtt ForensicsLambdaRole.Arn
+      Runtime: python3.12
+      Timeout: 900
+      # Add this later
+      #VpcConfig:
+      #  VpcConfig
+
+  ForensicsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  # Warning this is high privilege role
+  ForensicsLambdaRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+             - 's3:PutObjectLegalHold'
+             - 's3:ListBucket'
+            Resource:
+              - !GetAtt ForensicsDataBucket.Arn
+              - !Sub ${ForensicsDataBucket.Arn}/*
+          - Effect: Allow
+            Action:
+              - 'ec2:StopInstances'
+              - 'ec2:CreateImage'
+              - 'ec2:DescribeInstances'
+              - 'ec2:CreateTags'
+              - 'ec2:ModifyInstanceAttribute'
+              - 'ec2:ReplaceIamInstanceProfileAssociation'
+              - 'ec2:DescribeIamInstanceProfileAssociations'
+              - 'ssm:SendCommand'
+              - 'ssm:GetCommandInvocation'
+            Resource: "*"
+          - Effect: Allow
+            Action: 'ssm:GetParameter'
+            Resource: !Sub arn:aws:ssm:*:${AWS::AccountId}:parameter/resources/*
+          - Effect: Allow
+            Action: 'iam:PassRole'
+            Resource: !GetAtt QuarantineRole.Arn
+          - Effect: Allow
+            Action:
+              - 'iam:PutRolePolicy'
+              - 'iam:GetInstanceProfile'
+            Resource: "*"
+      Roles:
+        - !Ref ForensicsLambdaRole
+
+  # This is not in CloudFormation, create manually in the console
+  # Arn will be in the format: arn:aws:securityhub:${AWS::Region}:${AWS::AccountId}:action/custom/CompromisedEC2
+  #SecurityHubAction:
+  # Type: AWS::SecurityHub::CustomActionTarget
+  #  Properties:
+  #    ActionName: "CompromisedEC2"
+  #    Description: "Quarantine instance and collect forensic for a compromised instance."
+
+  EventBridge:
+    Condition: ActionCreated
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.securityhub
+        detail-type:
+          - Security Hub Findings - Custom Action
+        resources:
+          - !Sub arn:aws:securityhub:${AWS::Region}:${AWS::AccountId}:action/custom/CompromisedEC2
+      #RoleArn: String
+      Targets:
+        - Arn: !GetAtt ForensicsLambda.Arn
+          Id: Id1
+
+  EventBridgeLambdaPermission:
+    Condition: ActionCreated
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ForensicsLambda
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventBridge.Arn
+
